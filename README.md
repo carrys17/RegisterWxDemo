@@ -21,7 +21,13 @@
 
  (7) 随机应用变量，保存
 
-（8）显示完成
+ (8）显示完成
+
+
+
+需要注意的，因为这次是真机运行的，所以第一步杀死微信进程，不能直接用adb shell 的方式来执行命令，需要借助I/O流的形式来做，这样其实就是写一个壳来运行adb 指令。然后就是读取文件时，因为是xml的string虽然也是key-value的形式，但是不能直接用element.attributeValue("value")来拿收据，而是通过 element.getStringValue();来获取到String的值。
+
+
 
 
 
