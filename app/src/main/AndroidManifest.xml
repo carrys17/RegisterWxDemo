@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.example.admin.registerwxdemo">
 
     <application
@@ -33,5 +34,10 @@
 
     <!--读取IMEI时需要-->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+
+    <!--切换wifi需要-->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
 </manifest>
