@@ -1,13 +1,19 @@
 package com.example.admin.registerwxdemo;
 
 import android.Manifest;
+import android.accessibilityservice.AccessibilityService;
 import android.annotation.SuppressLint;
+import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.graphics.Rect;
 import android.net.wifi.WifiManager;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Message;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.support.v4.app.ActivityCompat;
@@ -16,6 +22,7 @@ import android.os.Bundle;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.view.View;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -43,6 +50,7 @@ import java.util.regex.Pattern;
 import okhttp3.internal.Util;
 
 import static com.example.admin.registerwxdemo.CommandUtils.execCommand;
+import static com.example.admin.registerwxdemo.MyService.getContext;
 import static com.example.admin.registerwxdemo.WechatServerHelper.getInstance;
 
 public class MainActivity extends AppCompatActivity {
@@ -66,9 +74,11 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String OPENFLY = "settings put global airplane_mode_on 1;am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true";
     private static final String CLOSEFLY = "settings put global airplane_mode_on 0;am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false";
+    private AccessibilityService mService;
 
+    private Handler mHandler;
 
-
+    private String finishInfo;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -82,7 +92,23 @@ public class MainActivity extends AppCompatActivity {
         helper = getInstance();
 
 
-        loadApps();
+//        loadApps();
+
+        mHandler = new Handler(){
+            @Override
+            public void handleMessage(Message msg) {
+                if (msg.what == 1){
+                    String info = (String) msg.obj;
+                    mHintView.setText(""+info);
+                }else if (msg.what ==2){
+                    String info = (String) msg.obj;
+                    mHintView.setText(""+info);
+                    mPassword.setText("");
+//                    mPassword.setFocusable(true);
+                    mPassword.requestFocus();
+                }
+            }
+        };
 
         mOk.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -97,7 +123,10 @@ public class MainActivity extends AppCompatActivity {
                         } catch (Exception e) {
                             e.printStackTrace();
                             String error = e.getMessage();// 将错误信息显示在主界面
-//                                mHintView.setText("" + error);
+                            Message message = Message.obtain();
+                            message.what = 1;
+                            message.obj = error;
+                            mHandler.sendMessage(message);
                         }
                     }
                 }).start();
@@ -135,6 +164,7 @@ public class MainActivity extends AppCompatActivity {
     //	（6）关闭飞行模式，连回4G
     //   (7) 随机应用变量，保存
     //	（8）显示完成
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
     private void doTask() throws MyRuntimeException, IOException, DocumentException, PackageManager.NameNotFoundException, JSONException {
 
         final String password = mPassword.getText().toString().trim();
@@ -179,24 +209,220 @@ public class MainActivity extends AppCompatActivity {
         toggleWiFi(this,false);
         waitForCloseWifi(100000);
         if (!isWiFiConnected() && !isAirModeOn(this)){
-            // 开启飞行模式
+            // 6、开启飞行模式
             execCommand(OPENFLY,true);
         }
 
 
-        // 关闭飞行模式
+        ///7、关闭飞行模式，连回4g网络
         waitForOpenAirMode(100000);
         if (isAirModeOn(this)){
             execCommand(CLOSEFLY,true);
         }
 
+        // 8、随机应用变量
+        RandomAppenv();
+
+
+        // 9、主界面显示完成
+        Message message = Message.obtain();
+        message.what = 2;
+        message.obj = "任务完成： "+finishInfo;
+        mHandler.sendMessage(message);
 
 
 
 
 
 
+    }
 
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
+    private void RandomAppenv() throws MyRuntimeException {
+        openAppenv();
+        waitForOpenAppenvFinish(10000);
+        // 选择微信
+        AccessibilityNodeInfo wechatInfo = getWechatInfo();
+        clickUtilSuccess(wechatInfo);
+        // 界面跳转
+        setCnt(0);
+        AccessibilityNodeInfo root = getRoot();
+        // 点击悬浮按钮
+        AccessibilityNodeInfo xuanfuButton = findButtonInfo(root);
+        sleepRandom();
+        xuanfuButton.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+
+        sleepRandom();
+        // 点击随机
+        findAndClickRandomInfo();
+        sleepRandom();
+        // 点击保存
+        findAndClickSaveInfo();
+
+        sleepRandom();
+        // 杀死应用变量,确保下次进来都是主界面
+        killAppenv();
+    }
+
+    private void killAppenv() {
+        execCommand("am force-stop com.sollyu.android.appenv.dev",true);
+
+    }
+
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
+    private void findAndClickSaveInfo() throws MyRuntimeException {
+        AccessibilityNodeInfo root = getRoot();
+        List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByViewId("com.sollyu.android.appenv.dev:id/menu_save_config");
+        if (list!=null && list.size() >0 ){
+            AccessibilityNodeInfo res = list.get(0);
+            res.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        }else {
+            throw new MyRuntimeException("找不到保存按钮");
+        }
+
+    }
+
+
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
+    private void findAndClickRandomInfo() throws MyRuntimeException {
+        AccessibilityNodeInfo root = getRoot();
+        List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByViewId("com.sollyu.android.appenv.dev:id/menu_random_all");
+        if (list!=null && list.size() >0 ){
+            AccessibilityNodeInfo res = list.get(0);
+            res.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        }else {
+            throw new MyRuntimeException("找不到随机按钮");
+        }
+    }
+
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
+    private AccessibilityNodeInfo findButtonInfo(AccessibilityNodeInfo root) {
+        AccessibilityNodeInfo res = null;
+        for (int i = 0; i < root.getChildCount(); i++) {
+            AccessibilityNodeInfo nodeInfo = root.getChild(i);
+            if (nodeInfo!=null && nodeInfo.getClassName().equals("android.widget.ImageButton")) {
+                Log.i("xyz","ImageButton");
+                Log.i("xyz","nodeInfo = "+nodeInfo);
+                Rect rect = new Rect();
+                nodeInfo.getBoundsInScreen(rect);
+                int x = rect.centerX();
+                int y = rect.centerY();
+                // todo [313,340][362,391]
+                // [536,1088][668,1228]
+
+//                if (313 <x && x < 362 && 340 <y && y< 391){ // 模拟器
+                if (536<x&& x<668 &&1088 < y && y < 1228) {  // 真机
+                    res =  nodeInfo;
+                    Log.i(TAG,"找到悬浮按钮");
+                    break; // 这里必须有这个break，表示找到返回键之后就会打破循环，将找到的值返回
+                }
+            }else {
+                res = findButtonInfo(nodeInfo);
+                if (res != null){
+                    return res;
+                }
+            }
+        }
+        return res;
+
+    }
+
+    private void clickUtilSuccess(AccessibilityNodeInfo info) throws MyRuntimeException {
+        Log.i(TAG, "clickUtilSuccess: info = "+info.toString());
+        int failnum=0;
+        boolean bok=false;
+        sleepRandom();
+        do {
+            setCnt(0);
+            while (!info.isClickable()){
+                info = info.getParent();
+            }
+            info.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            try {
+                waitFor(10005);
+                bok=true;
+            } catch (MyRuntimeException e) {
+                failnum++;
+            }
+            if(bok)
+                break;
+            if(failnum>=3){
+                throw new MyRuntimeException("重试次数大于3");
+            }
+        }while (true);
+
+    }
+
+    private void sleepRandom() {
+        double ran = Math.random();
+        long lon = (long) (1000 + ran *200);
+        SystemClock.sleep(lon);
+    }
+
+
+    private int getCnt(){
+        int i;
+        i = MyService.cnt.get();
+        Log.i(TAG,"get cnt = "+ MyService.cnt);
+        return i;
+    }
+
+    private void setCnt(int i){
+        MyService.cnt.set(i);
+        Log.i(TAG,"set cnt = "+ MyService.cnt);
+
+    }
+
+    // 线程睡眠，让出cpu
+    public void waitFor(long overTime) throws MyRuntimeException {
+        long before = System.currentTimeMillis();
+        do{
+            long now = System.currentTimeMillis();
+            if (now - before >= overTime){
+                Log.i("xyz","等待超时");
+                throw new MyRuntimeException("等待辅助类方法超时 "+overTime);
+            }
+            SystemClock.sleep(300);
+        }while (getCnt() == 0);
+    }
+
+    private void waitForOpenAppenvFinish(long overTime) throws MyRuntimeException {
+        long before = System.currentTimeMillis();
+        do {
+            long after = System.currentTimeMillis();
+            if (after - before >= overTime){
+                throw new MyRuntimeException("等待应用变量开启完成失败");
+            }
+            SystemClock.sleep(500);
+        }while (getWechatInfo()==null);
+    }
+
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
+    private AccessibilityNodeInfo getWechatInfo(){
+        AccessibilityNodeInfo res = null;
+        AccessibilityNodeInfo root = getRoot();
+        List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByText("微信");
+        if (list!=null && list.size()> 0){
+            res = list.get(0);
+        }
+        return res;
+    }
+
+    // 每次都等待200ms后获取root根节点信息
+    @android.support.annotation.RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+    private AccessibilityNodeInfo getRoot() {
+        mService = (AccessibilityService) getContext();
+        AccessibilityNodeInfo root;
+        do {
+            root = mService.getRootInActiveWindow();
+            SystemClock.sleep(200);
+        }while (root==null);
+        root.refresh();
+        return root;
+    }
+
+    private void openAppenv() {
+        execCommand("am start -n com.sollyu.android.appenv.dev/com.sollyu.android.appenv.activity.SplashActivity",true);
     }
 
     private void waitForOpenAirMode(long overTime) throws MyRuntimeException {
@@ -226,6 +452,7 @@ public class MainActivity extends AppCompatActivity {
                 throw new MyRuntimeException("重复上传数据3次失败");
             }
             res = uploadToService(password, id);
+            finishInfo = res.toString();
             SystemClock.sleep(500);
             i++;
         }while (!(res!=null && (res.getInt("result") ==1)));
@@ -310,6 +537,14 @@ public class MainActivity extends AppCompatActivity {
     private JSONObject getWx62Data(String appenvInfo) throws IOException, JSONException {
         /*从微信文件CompatibleInfo.cfg中读取微信的62数据*/
         String compatibleInfoBase64 = getCompatibleInfoBase64();
+
+        if(appenvInfo == null) {
+            Log.i(TAG, "获取应用变量失败");
+        }
+        if(compatibleInfoBase64 == null) {
+            Log.i(TAG, "获取62数据失败");
+        }
+
         // 拼接成JSONObject数据
         JSONObject wx62data = createWx62dataJSON(appenvInfo,compatibleInfoBase64);
         return wx62data;
