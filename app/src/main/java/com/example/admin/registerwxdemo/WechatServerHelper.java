@@ -1,42 +1,46 @@
 package com.example.admin.registerwxdemo;
 
-import android.util.Log;
-
-import com.zhy.http.okhttp.OkHttpUtils;
-import com.zhy.http.okhttp.callback.Callback;
-import com.zhy.http.okhttp.request.RequestCall;
-
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import java.io.IOException;
 
 import okhttp3.Call;
 import okhttp3.MediaType;
 import okhttp3.Response;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+import android.util.Log;
+
+import com.example.admin.registerwxdemo.Utils.AESUtils;
+
+
+import com.example.admin.registerwxdemo.Utils.AtomicEvent;
+import com.zhy.http.okhttp.OkHttpUtils;
+import com.zhy.http.okhttp.callback.Callback;
+import com.zhy.http.okhttp.request.RequestCall;
+
 /**
- * ????????????sdasdasdasdasd
+ * 用于向服务器网络请求的类sdasdasdasdasd
  */
 public class WechatServerHelper {
 
 	static WechatServerHelper mWechatServerHelper = null;
 	public static String BASE_URL = "http://192.168.0.213:8000/";
 
-	/**??????*/
+	/**修改微信信息*/
 	final public static int CHANGE_PASS = 0x1;
 	final public static int CHANGE_NICKNAME = 0x2;
 	final public static int CHANGE_WXID = 0x3;
 	final public static int CHANGE_BINDPHONE = 0x4;
 
-	/**??????????optType*/
+
+	/**统计接口，统计类型，optType*/
 	final public static int ADD_PEOPLE = 0x1;
 	final public static int PASS_PEOPLE = 0x2;
-	final public static int INITIATIVE_PUSHCARD_NUM = 0x3;// ???????????????
-	final public static int PASSIVE_PUSHCARD_NUM = 0x4;// ????????????????
+	final public static int INITIATIVE_PUSHCARD_NUM = 0x3;// 推名片前有小红点，即主动发名片
+	final public static int PASSIVE_PUSHCARD_NUM = 0x4;// 推名片前没有小红点，即被动发名片
 
-	/**??????????*/
+	/**非任务类型日志数据库*/
 	final public static int OPTNOTIFY_TYPE_ADD_CARDWX = 1;
 	final public static int OPTNOTIFY_TYPE_CARDWX_EXIST = 2;
 	final public static int OPTNOTIFY_RES_SUCCESS = 1;
@@ -106,36 +110,36 @@ public class WechatServerHelper {
 
 	public String postJSon(String url, JSONObject postData) {
 		try {
-			PostCallback postCallback = null; // ??????
-			RequestCall requestCall = null; // http????
-			byte[] encrypt = AESUtils.encrypt(postData.toString()); // ?????
-			String encrptHexS = AESUtils.bytesToHexString(encrypt); // ????HEX
-			Log.i("post", "isEncryptStringCanDecrypt = " + isEncryptStringCanDecrypt(encrptHexS));// ?????????log???encrptHexS
+			PostCallback postCallback = null; // 异步回调接口
+			RequestCall requestCall = null; // http请求对象
+			byte[] encrypt = AESUtils.encrypt(postData.toString()); // 加密后数据
+			String encrptHexS = AESUtils.bytesToHexString(encrypt); // 加密后转HEX
+			Log.i("post", "isEncryptStringCanDecrypt = " + isEncryptStringCanDecrypt(encrptHexS));// 用于记录解密异常的log，以及encrptHexS
 
 			for (int i = 0; i < 3; i++) {
 				long ts = System.currentTimeMillis(); // TAG
 				postCallback = new PostCallback() {};
 				requestCall = OkHttpUtils
 						.postString()
-						.url(url)// ?post?url
-						.content(encrptHexS)// ?post???
-						.mediaType(MediaType.parse("application/json; charset=utf-8")) // post????json??
-						.tag(ts) // ??tag
+						.url(url)// 要post的url
+						.content(encrptHexS)// 要post的数据
+						.mediaType(MediaType.parse("application/json; charset=utf-8")) // post的数据为json数据
+						.tag(ts) // 设置tag
 						.build();
 
 				try {
-					requestCall.connTimeOut(60000).writeTimeOut(60000).readTimeOut(60000).execute(postCallback); // ?????????http??
+					requestCall.connTimeOut(60000).writeTimeOut(60000).readTimeOut(60000).execute(postCallback); // 设置超时，并且开始http请求
 					Log.i("post", "waitWithTimeout");
 					if (postCallback.waitWithTimeout(60 * 1000) == false) { // wait
-																			// 60s??????onReponse??onError??????
+						// 60s之后还没回调onReponse或者onError，则取消请求
 						OkHttpUtils.getInstance().cancelTag(ts);
 						requestCall = null;
 						postCallback = null;
-						Thread.sleep(10000); // ??10s????????
+						Thread.sleep(10000); // 睡眠10s之后继续尝试请求
 						continue;
 					}
 
-					String res = postCallback.getResponse(); // ?????
+					String res = postCallback.getResponse(); // 获取返回值
 					if (res != null) {
 						return res;
 					}
@@ -146,7 +150,7 @@ public class WechatServerHelper {
 					requestCall = null;
 					postCallback = null;
 				}
-				Thread.sleep(10000); // ??10s????????
+				Thread.sleep(10000); // 睡眠10s之后继续尝试请求
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -155,7 +159,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ???post???????post???true or false
+	 * 向后台post数据，返回是否post成功，true or false
 	 */
 	public  boolean postDataToServerAndRetResult(String url, JSONObject postData) {
 		Log.i("post", "url = " + url);
@@ -179,7 +183,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ???post????????????
+	 * 向后台post数据，返回后台返回的结果
 	 */
 	public JSONObject postDataToServerAndGetRes(String url, JSONObject postData) {
 		Log.i("post", "url = " + url);
@@ -199,7 +203,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ?????Job
+	 * 从后台获取Job
 	 */
 	public JSONObject getJob(int userid, String url) throws JSONException {
 		try {
@@ -213,7 +217,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ??????????
+	 * 获取微信号，用于上号
 	 */
 	public JSONObject getWx(int chn_id, int userStatus, String logonMechine) throws IOException, JSONException {
 		JSONObject postData = new JSONObject();
@@ -225,36 +229,36 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ??????????????????id?????
+	 * 修改微信号信息，例如密码，昵称，微信id，手机号码
 	 */
 	public boolean changeWx(int userid, String extraInfo, int type) throws IOException, JSONException {
 		JSONObject postData = new JSONObject();
 		postData.put("userid", userid);
 		switch (type) {
-		case CHANGE_PASS:
-			postData.put("newPass", extraInfo);
-			break;
-		case CHANGE_NICKNAME:
-			postData.put("newNickName", extraInfo);
-			break;
-		case CHANGE_WXID:
-			postData.put("newWxId", extraInfo);
-			break;
-		case CHANGE_BINDPHONE:
-			postData.put("newPhone", extraInfo);
-			break;
-		default:
-			break;
+			case CHANGE_PASS:
+				postData.put("newPass", extraInfo);
+				break;
+			case CHANGE_NICKNAME:
+				postData.put("newNickName", extraInfo);
+				break;
+			case CHANGE_WXID:
+				postData.put("newWxId", extraInfo);
+				break;
+			case CHANGE_BINDPHONE:
+				postData.put("newPhone", extraInfo);
+				break;
+			default:
+				break;
 		}
 		String url = BASE_URL + "wechat/changewx";
 		return postDataToServerAndRetResult(url, postData);
 	}
 
 	/**
-	 * ?????????????????????
+	 * 兼容以前登陆的账号，发送账号相关信息到后台
 	 */
 	public JSONObject userInfoForOld(int userid, String username, String password, String logonMechine, int wxLogonType, String appenvInfo,
-			int chn_id, int status, String softVersion, String wxVersion, String wxId, JSONObject wx62data) throws JSONException, IOException {
+									 int chn_id, int status, String softVersion, String wxVersion, String wxId, JSONObject wx62data) throws JSONException, IOException {
 		JSONObject postData = new JSONObject();
 		if(userid != -1)
 			postData.put("userid", userid);
@@ -278,7 +282,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ?????????????????????????????
+	 * 统计接口，统计类型：添加好友个数、通过好友个数、推名片个数
 	 */
 	public boolean workStatistics(int userid, int optType, int cnt, JSONObject peopleJson, String phone, int taskChnId) throws IOException, JSONException {
 		JSONObject postData = new JSONObject();
@@ -298,7 +302,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ?????????????{info : [{nickname1:phone1}, {nickname2:phone2}, {nickname3:phone3}...]}
+	 * 上传添加好友的信息，内容为{info : [{nickname1:phone1}, {nickname2:phone2}, {nickname3:phone3}...]}
 	 */
 	public boolean uploadAddedUserInfo(JSONObject userInfo) {
 		String url = BASE_URL + "material/remarks_friend";
@@ -306,7 +310,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ???
+	 * 心跳包
 	 */
 	public boolean keepLive(String user, String logonMechine, int status, String info, String softVersion, String wxVersion) throws IOException, JSONException {
 		JSONObject postData = new JSONObject();
@@ -322,7 +326,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ??????????????????AddFriends???Job
+	 * 每添加一个好友，上传到后台，主要用于AddFriends相关的Job
 	 */
 	public boolean phoneStatusChange(int userid, int taskchn_id, String phone, String rawnickname, int status) throws IOException, JSONException {
 		JSONObject postData = new JSONObject();
@@ -337,7 +341,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ??????????????????AddFriends???Job
+	 * 每添加一个好友，上传到后台，主要用于AddFriends相关的Job
 	 */
 	public boolean phoneStatusChangeBat(int userid, int taskchn_id, JSONArray userInfos, int status) throws IOException, JSONException {
 		JSONObject postData = new JSONObject();
@@ -350,8 +354,8 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ??????????????????	//new add in v2.2
-	 *	POST http://www.xxx.com/material/friend_ok	(??) { phone:"xxxx", wxid:"xxxxxxxxxxxxxx"(???,??wxid), sex:xx, status:3 }
+	 * 好友通过验证时，向服务器发送包的格式	//new add in v2.2
+	 *	POST http://www.xxx.com/material/friend_ok	(新增) { phone:"xxxx", wxid:"xxxxxxxxxxxxxx"(微信号,并非wxid), sex:xx, status:3 }
 	 */
 	public boolean friendOk(String phone, int taskChnId, String wxid, int sex, int status) throws IOException, JSONException {
 		JSONObject postData = new JSONObject();
@@ -366,7 +370,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ?????
+	 * 请求通讯录
 	 */
 	public JSONObject requestContacts(int userid, int taskchn_id) throws IOException, JSONException {
 		JSONObject postData = new JSONObject();
@@ -377,7 +381,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ??????????RestoreDataJob
+	 * 用于恢复数据，详情看RestoreDataJob
 	 */
 	public JSONObject getbackwxinfo(String logonMechine) throws JSONException {
 		JSONObject postData = new JSONObject();
@@ -387,7 +391,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ??????
+	 * 拉群用户统计
 	 */
 	public boolean laqunStatistics(int userid, int qunchn_id, String qunname, JSONArray wxnickname, String extraMsg) throws JSONException {
 		JSONObject postData = new JSONObject();
@@ -416,7 +420,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ??????
+	 * 拉群人数统计
 	 */
 	public boolean qunPeopleStatistics(int userid, int qunChnId, String qunName, int count, String extraMsg) throws JSONException {
 		JSONObject postData = new JSONObject();
@@ -430,7 +434,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ????????????
+	 * 用户向服务器发送日志记录
 	 */
 	public boolean optNotify(int userid, int type, JSONObject params, String extraMsg, int result) throws JSONException {
 		JSONObject postData = new JSONObject();
@@ -444,8 +448,8 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ???????,??????,?????? ??????????
-	 * POST http://www.xxx.com/material/phone_blacklist_bat	(v1.1??) (??????????)
+	 * 用于搜索的时候,检测到不存在,发送给服务器 用于更新手机号黑名单
+	 * POST http://www.xxx.com/material/phone_blacklist_bat	(v1.1新增) (客户端需要新增的接口)
 	 * {userid:xxxx, taskchn_id:xxx, phones:[{phone1:judgeType1},{phone2:judgeType2},{phone3:judgeType3}...]}
 	 */
 	public boolean uploadPhoneBlacklist(int userid, int taskChnId, JSONArray phones) throws JSONException {
@@ -467,7 +471,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ?????phones?????????wxid
+	 * 向后台请求phones，用于手机号转换为wxid
 	 */
 	public JSONObject addrlistForTranslateWxid(int userid, int spaceid, int num , int bForTranslate) throws JSONException {
 		JSONObject postData = new JSONObject();
@@ -480,7 +484,7 @@ public class WechatServerHelper {
 	}
 
 	/**
-	 * ??wxid
+	 * 反馈wxid
 	 */
 	public boolean translateWxidOk(int userid, int spaceid, JSONObject infos) throws JSONException {
 		JSONObject postData = new JSONObject();
@@ -494,7 +498,7 @@ public class WechatServerHelper {
 
 
 	/**
-	 * ??wxid???wxid??
+	 * 请求wxid，用于wxid加人
 	 */
 	public JSONObject requestWxidlist(int userid, int taskChnId, int num) throws JSONException {
 		JSONObject postData = new JSONObject();
@@ -507,7 +511,7 @@ public class WechatServerHelper {
 
 
 	/**
-	 * ???????????
+	 * 反馈手机号已经过滤过了
 	 */
 	public JSONObject phoneExistenceBat(int userid, int spaceid, JSONArray phones) throws JSONException {
 		JSONObject postData = new JSONObject();

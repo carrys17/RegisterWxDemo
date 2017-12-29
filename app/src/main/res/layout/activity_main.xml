@@ -73,7 +73,7 @@
         android:layout_alignRight="@+id/chn_id"
         android:layout_alignStart="@+id/chn_id"
         android:layout_alignTop="@+id/textView3"
-        android:text="退出应用变量，登陆微信，打开辅助功能，确保使用的是移动网络" />
+        android:text="登陆微信，打开辅助功能，确保使用的是移动网络" />
 
     <Button
         android:id="@+id/ok"

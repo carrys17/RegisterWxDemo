@@ -2,7 +2,6 @@ package com.example.admin.registerwxdemo;
 
 import android.Manifest;
 import android.accessibilityservice.AccessibilityService;
-import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.Intent;
@@ -10,12 +9,10 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Rect;
-import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
 import android.os.SystemClock;
-import android.provider.Settings;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -27,6 +24,8 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 
+import com.example.admin.registerwxdemo.Utils.StringUtils;
+
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringEscapeUtils;
 import org.dom4j.Document;
@@ -36,22 +35,21 @@ import org.dom4j.io.SAXReader;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-import okhttp3.internal.Util;
-
-import static com.example.admin.registerwxdemo.CommandUtils.execCommand;
+import static com.example.admin.registerwxdemo.Utils.CommandUtils.execCommand;
 import static com.example.admin.registerwxdemo.MyService.getContext;
+import static com.example.admin.registerwxdemo.Utils.NetworkUtils.isAirModeOn;
+import static com.example.admin.registerwxdemo.Utils.NetworkUtils.isWiFiConnected;
+import static com.example.admin.registerwxdemo.Utils.NetworkUtils.toggleWiFi;
 import static com.example.admin.registerwxdemo.WechatServerHelper.getInstance;
+import static com.example.admin.registerwxdemo.Utils.WechatUtils.clearWxData;
+import static com.example.admin.registerwxdemo.Utils.WechatUtils.killWechatByCommand;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -113,6 +111,8 @@ public class MainActivity extends AppCompatActivity {
         mOk.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+
+                mHintView.setText("任务执行中...");
 
                 new Thread(new Runnable() {
                     @Override
@@ -179,7 +179,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 1、停止微信app
         if (hasWechatApp()) {
-            killWechat();
+            killWechatByCommand(true);
         } else {
             throw new MyRuntimeException("未安装微信，请先安装微信再重试");
         }
@@ -196,19 +196,19 @@ public class MainActivity extends AppCompatActivity {
 
         // 3、等待wifi开启成功后上传数据
         waitForOpenWifi(100000);
-        if (isWiFiConnected()){
+        if (isWiFiConnected(this)){
             Log.i(TAG, "doTask: 上传数据");
             uploadToServiceThreeTime(password,id);
         }
 
 
         // 4、清理微信数据
-        clearWxData();
+        clearWxData(true);
 
         // 5、断开wifi
         toggleWiFi(this,false);
         waitForCloseWifi(100000);
-        if (!isWiFiConnected() && !isAirModeOn(this)){
+        if (!isWiFiConnected(this) && !isAirModeOn(this)){
             // 6、开启飞行模式
             execCommand(OPENFLY,true);
         }
@@ -221,7 +221,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // 8、随机应用变量
-        RandomAppenv();
+        randomAppenv();
 
 
         // 9、主界面显示完成
@@ -238,7 +238,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
-    private void RandomAppenv() throws MyRuntimeException {
+    private void randomAppenv() throws MyRuntimeException {
         openAppenv();
         waitForOpenAppenvFinish(10000);
         // 选择微信
@@ -422,7 +422,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void openAppenv() {
-        execCommand("am start -n com.sollyu.android.appenv.dev/com.sollyu.android.appenv.activity.SplashActivity",true);
+        execCommand("am start --activity-clear-top com.sollyu.android.appenv.dev/com.sollyu.android.appenv.activity.SplashActivity",true);
     }
 
     private void waitForOpenAirMode(long overTime) throws MyRuntimeException {
@@ -437,9 +437,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    private boolean isAirModeOn(Context context){
-        return (Settings.System.getInt(context.getContentResolver(),Settings.System.AIRPLANE_MODE_ON,0) == 1 ?true : false);
-    }
+
 
 
 
@@ -452,7 +450,9 @@ public class MainActivity extends AppCompatActivity {
                 throw new MyRuntimeException("重复上传数据3次失败");
             }
             res = uploadToService(password, id);
-            finishInfo = res.toString();
+            if (res!=null){
+                finishInfo = res.toString();
+            }
             SystemClock.sleep(500);
             i++;
         }while (!(res!=null && (res.getInt("result") ==1)));
@@ -464,10 +464,10 @@ public class MainActivity extends AppCompatActivity {
         do {
             long after = System.currentTimeMillis();
             if (after - before >= overTime){
-                throw new MyRuntimeException("等待wifi开启超时");
+                throw new MyRuntimeException("等待wifi关闭超时");
             }
             SystemClock.sleep(500);
-        }while (isWiFiConnected());
+        }while (isWiFiConnected(this));
     }
 
 
@@ -479,24 +479,11 @@ public class MainActivity extends AppCompatActivity {
                 throw new MyRuntimeException("等待wifi开启超时");
             }
             SystemClock.sleep(500);
-        }while (!isWiFiConnected());
+        }while (!isWiFiConnected(this));
     }
 
-    private boolean isWiFiConnected() {
-        WifiManager wm = (WifiManager) this.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-        if (wm != null && wm.isWifiEnabled()) {
-            Log.i(TAG, "Wifi网络已经开启");
-            return true;
-        }
-        Log.i(TAG, "Wifi网络还未开启");
-        return false;
 
-    }
 
-    // 清理微信数据
-    private void clearWxData() throws IOException {
-        execCommand("pm clear com.tencent.mm",true);
-    }
 
 
     private JSONObject uploadToService(String password, int chn_id) throws IOException, DocumentException, MyRuntimeException, PackageManager.NameNotFoundException, JSONException {
@@ -554,8 +541,8 @@ public class MainActivity extends AppCompatActivity {
     private JSONObject createWx62dataJSON(String appenvInfo,String compatibleInfoBase64) throws JSONException {
         JSONObject wx62data = null;
         String unescapeInfo = StringEscapeUtils.unescapeXml(appenvInfo);
-        String appenvJSONString = Utils.reg(unescapeInfo, "\\{.*\\}");
-        if(Utils.isJSONString(appenvJSONString) == true) {
+        String appenvJSONString = StringUtils.reg(unescapeInfo, "\\{.*\\}");
+        if(StringUtils.isJSONString(appenvJSONString) == true) {
             JSONObject appenvJSON = new JSONObject(appenvJSONString);
             wx62data = new JSONObject();
             wx62data.put("buildManufacturer", appenvJSON.getString("buildManufacturer"));
@@ -716,31 +703,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    // 控制wifi的开关
-    private void toggleWiFi(Context context,boolean b) {
-        WifiManager manager = (WifiManager) context.getSystemService(WIFI_SERVICE);
-        manager.setWifiEnabled(b);
-    }
-
-
-    //  杀死微信
-    private void killWechat() throws IOException {
-
-//        Process exec = Runtime.getRuntime().exec("adb shell am force-stop com.tencent.mm");
-//        Log.i(TAG, "killWechat: "+exec.toString());
-
-
-        Runtime.getRuntime().exec("su");
-
-        // 真机不能用adb shell的方式来执行命令。模拟器就可以
-//        execCMD("am force-stop com.tencent.mm");
-        // 上面这种就可以的，但是不够完善，采用这个比较完美，还有返回信息输出的。
-        execCommand("am force-stop com.tencent.mm",true);
 
 
 
-
-    }
 
 //    private void execCMD(String paramString) {
 //        try {
